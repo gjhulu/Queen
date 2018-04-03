@@ -3,6 +3,8 @@ package com.queen.manager.consumer;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +17,9 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.netflix.hystrix.HystrixCommand;
+import com.netflix.hystrix.HystrixCommandGroupKey;
+import com.queen.manager.hystrix.BookCommand;
 import com.queen.pojo.entity.Book;
 
 @RestController
@@ -125,4 +130,23 @@ public class ConsumerBookController {
 	public void delete() {
 	    restTemplate.delete("http://HELLO-SERVICE/getbook4/{1}", 100);
 	}
+	
+	/**
+	 * 同步调用和异步调用
+	 * 当BookCommand创建成功之后，我们就可以在我们的Controller中调用它了
+	 * @return
+	 * @throws ExecutionException
+	 * @throws InterruptedException
+	 */
+	@RequestMapping("/test1")
+	public Book test1() throws ExecutionException, InterruptedException {
+	    BookCommand bookCommand = new BookCommand(HystrixCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey("")), restTemplate);
+	    //同步调用
+	    //Book book1 = bookCommand.execute();
+	    //异步调用 异步请求中我们需要通过get方法来获取请求结果，在调用get方法的时候也可以传入超时时长。
+	    Future<Book> queue = bookCommand.queue();
+	    Book book = queue.get();
+	    return book;
+	}
+	
 }
