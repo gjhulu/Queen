@@ -19,8 +19,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import com.netflix.hystrix.HystrixCommand;
 import com.netflix.hystrix.HystrixCommandGroupKey;
+import com.netflix.hystrix.HystrixCommandKey;
+import com.netflix.hystrix.strategy.concurrency.HystrixRequestContext;
 import com.queen.manager.hystrix.BookCommand;
-import com.queen.pojo.entity.Book;
 
 @RestController
 public class ConsumerBookController {
@@ -29,12 +30,7 @@ public class ConsumerBookController {
 	 
 	 @Autowired
     private HelloService helloService;
-	 
-    @RequestMapping(value = "/ribbon-consumer",method = RequestMethod.GET)
-    public String helloController() {
-        return helloService.hello();
-    }
-	 
+	
 	 /**
 	 * getForEntity方法的返回值是一个ResponseEntity<T>，ResponseEntity<T>是Spring对HTTP请求响应的封装，包括了几个重要的元素，如响应码、contentType、contentLength、响应消息体等
 	 * 案例地址： https://github.com/lenve/SimpleSpringCloud/tree/master/RestTemplate
@@ -132,6 +128,14 @@ public class ConsumerBookController {
 	}
 	
 	/**
+	 * 断路由
+	 */
+    @RequestMapping(value = "/ribbon-consumer",method = RequestMethod.GET)
+    public String helloController() {
+        return helloService.hello();
+    }
+	
+	/**
 	 * 同步调用和异步调用
 	 * 当BookCommand创建成功之后，我们就可以在我们的Controller中调用它了
 	 * @return
@@ -147,6 +151,51 @@ public class ConsumerBookController {
 	    Future<Book> queue = bookCommand.queue();
 	    Book book = queue.get();
 	    return book;
+	}
+	
+	//http://HELLO-SERVICE/getbook5/{1}
+	@RequestMapping("/test5")
+	public Book test5() {
+	    HystrixCommandKey commandKey = HystrixCommandKey.Factory.asKey("commandKey");
+	    HystrixRequestContext.initializeContext();
+	    BookCommand bc1 = new BookCommand(HystrixCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey("")).andCommandKey(commandKey), restTemplate, 1l);
+	    Book e1 = bc1.execute();
+	    //如果我将服务提供者的数据修改了，那么缓存的数据就应该被清除，否则用户在读取的时候就有可能获取到一个错误的数据，缓存数据的清除也很容易，也是根据id来清除
+	    //HystrixRequestCache.getInstance(commandKey, HystrixConcurrencyStrategyDefault.getInstance()).clear(String.valueOf(1l));
+	    BookCommand bc2 = new BookCommand(HystrixCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey("")).andCommandKey(commandKey), restTemplate, 1l);
+	    Book e2 = bc2.execute();
+	    BookCommand bc3 = new BookCommand(HystrixCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey("")).andCommandKey(commandKey), restTemplate, 1l);
+	    Book e3 = bc3.execute();
+	    System.out.println("e1:" + e1);
+	    System.out.println("e2:" + e2);
+	    System.out.println("e3:" + e3);
+	    return e1;
+	}
+	
+	@RequestMapping("/test6")
+	public Book test6() {
+	    HystrixRequestContext.initializeContext();
+	    //第一次发起请求
+	    Book b1 = helloService.test6(2, "");
+	    //参数和上次一致，使用缓存数据
+	    Book b2 = helloService.test6(2, "");
+	    //参数不一致，发起新请求
+	    Book b3 = helloService.test6(2, "aa");
+	    return b1;
+	}
+	
+	@RequestMapping("/test6")
+	public Book test7() {
+	    HystrixRequestContext.initializeContext();
+	    //第一次发起请求
+	    Book b1 = helloService.test6(2);
+	    //清除缓存
+	    helloService.test7(2);
+	    //缓存被清除，重新发起请求
+	    Book b2 = helloService.test6(2);
+	    //参数一致，使用缓存数据
+	    Book b3 = helloService.test6(2);
+	    return b1;
 	}
 	
 }
